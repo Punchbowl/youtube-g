@@ -46,7 +46,6 @@ class YouTubeG
                   :keywords => [] }.merge(opts)
         
         @opts[:filename] ||= generate_uniq_filename_from(data)
-        
         post_body_io = generate_upload_io(video_xml, data)
         
         upload_headers = authorization_headers.merge({
@@ -148,7 +147,7 @@ class YouTubeG
       def raise_on_faulty_response(response)
         if response.code.to_i == 403
           raise AuthenticationError, response.body[/<TITLE>(.+)<\/TITLE>/, 1]
-        elsif response.code.to_i != 200
+        elsif ![200, 201].include?(response.code.to_i)
           raise UploadError, parse_upload_error_from(response.body)
         end 
       end
@@ -173,29 +172,40 @@ class YouTubeG
       end
       
       def auth_token
-        @auth_token ||= begin
-          http = Net::HTTP.new("www.google.com", 443)
-          http.use_ssl = true
-          body = "Email=#{YouTubeG.esc @user}&Passwd=#{YouTubeG.esc @pass}&service=youtube&source=#{YouTubeG.esc @client_id}"
-          response = http.post("/youtube/accounts/ClientLogin", body, "Content-Type" => "application/x-www-form-urlencoded")
-          raise UploadError, response.body[/Error=(.+)/,1] if response.code.to_i != 200
-          @auth_token = response.body[/Auth=(.+)/, 1]
-        end
+        # @auth_token ||= begin
+        #           http = Net::HTTP.new("www.google.com", 443)
+        #           http.use_ssl = true
+        #           body = "Email=#{YouTubeG.esc @user}&Passwd=#{YouTubeG.esc @pass}&service=youtube&source=#{YouTubeG.esc @client_id}"
+        #           response = http.post("/youtube/accounts/ClientLogin", body, "Content-Type" => "application/x-www-form-urlencoded")
+        #           raise UploadError, response.body[/Error=(.+)/,1] if response.code.to_i != 200
+        #           @auth_token = response.body[/Auth=(.+)/, 1]
+        #         end
+        
+        @auth_token = "AIwbFARHqttuVHWsTCUacvS6gOiRG8B9V5gvgriEcIk26dRwWgvQuupGfRIXw4z7lRC7mi1qRZdMXmxd-XU6LwXKNfvGJ_C09_0fdf50_NYKiUfPbH223naaEuuKDEk_BS953CsUoQquMV_L18UqLwaz-HhyFwdy3A"
       end
       
       # TODO: isn't there a cleaner way to output top-notch XML without requiring stuff all over the place?
       def video_xml
-        b = Builder::XML.new
+        b = Builder::XmlMarkup.new
         b.instruct!
         b.entry(:xmlns => "http://www.w3.org/2005/Atom", 'xmlns:media' => "http://search.yahoo.com/mrss/", 'xmlns:yt' => "http://gdata.youtube.com/schemas/2007") do | m |
           m.tag!("media:group") do | mg |
-            mg.tag!("media:title", :type => "plain") { @opts[:title] }
-            mg.tag!("media:description", :type => "plain") { @opts[:description] }
-            mg.tag!("media:keywords") { @opts[:keywords].join(",") }
-            mg.tag!('media:category', :scheme => "http://gdata.youtube.com/schemas/2007/categories.cat") { @opts[:category] }
+            mg.tag!("media:title", @opts[:title], :type => "plain")
+            mg.tag!("media:description", @opts[:description], :type => "plain")
+            mg.tag!("media:keywords", @opts[:keywords].join(","))
+            mg.tag!('media:category', @opts[:category], :scheme => "http://gdata.youtube.com/schemas/2007/categories.cat")
             mg.tag!('yt:private') if @opts[:private]
           end
         end.to_s
+      end
+      
+      def generate_update_body(video_xml)
+        post_body = [
+          "--#{boundary}\r\n",
+          "Content-Type: application/atom+xml; charset=UTF-8\r\n\r\n",
+          video_xml,
+          "\r\n--#{boundary}\r\n",
+        ].join
       end
       
       def generate_upload_io(video_xml, data)
