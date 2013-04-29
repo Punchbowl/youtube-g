@@ -15,7 +15,6 @@ class YouTubeG
         elsif params[:user] && options[:favorites]
           @url << "#{params[:user]}/favorites"
           set_instance_variables(params)
-          break
         elsif params[:user]
           @url << "#{params[:user]}/uploads"
           set_instance_variables(params)
